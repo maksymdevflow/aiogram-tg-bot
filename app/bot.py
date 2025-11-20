@@ -22,6 +22,7 @@ from constants import (
     button_create_resume,
     button_my_resume,
     msg_bot_greeting,
+    msg_bot_greeting_with_resume,
     msg_my_resume_title,
     msg_no_resume,
     msg_resume_deleted,
@@ -49,6 +50,7 @@ from edit_resume import (
     toggle_race_duration_wrapper,
     toggle_type_of_work_wrapper,
 )
+from functions import safe_callback_answer
 from keyboards import (
     delete_resume_keyboard,
     get_main_menu_keyboard,
@@ -122,7 +124,8 @@ async def command_start_handler(message: Message, state: FSMContext) -> None:
             has_resume = resume_data is not None
 
         keyboard = get_main_menu_keyboard(has_resume=has_resume)
-        await message.answer(msg_bot_greeting, reply_markup=keyboard)
+        greeting = msg_bot_greeting_with_resume if has_resume else msg_bot_greeting
+        await message.answer(greeting, reply_markup=keyboard)
     except Exception as e:
         user_info = get_user_info(message)
         log_error(
@@ -212,7 +215,7 @@ async def handle_my_resume_button(message: Message, state: FSMContext) -> None:
             await message.answer(msg_no_resume)
             # Update keyboard to show "Create Resume"
             keyboard = get_main_menu_keyboard(has_resume=False)
-            await message.answer(msg_bot_greeting, reply_markup=keyboard)
+            await message.answer(msg_bot_greeting, reply_markup=keyboard)  # No resume, show create message
     except Exception as e:
         user_info = get_user_info(message)
         log_error(
@@ -238,19 +241,22 @@ async def handle_delete_resume(callback: CallbackQuery, state: FSMContext) -> No
         )
 
         if not user_info["user_id"]:
-            await callback.answer("Помилка: не вдалося визначити користувача")
+            await safe_callback_answer(callback, "Помилка: не вдалося визначити користувача")
             return
 
         success = await delete_resume(user_info["user_id"])
         if success:
-            await callback.message.edit_text(msg_resume_deleted)
-            await callback.answer("Резюме видалено")
-
-            # Update keyboard to show "Create Resume"
+            await safe_callback_answer(callback, "Резюме видалено")
+            
+            # Remove inline keyboard and show reply keyboard with "Create Resume" button
             keyboard = get_main_menu_keyboard(has_resume=False)
-            await callback.message.answer(msg_bot_greeting, reply_markup=keyboard)
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception:
+                pass  # Keyboard might already be removed
+            await callback.message.answer(msg_resume_deleted, reply_markup=keyboard)
         else:
-            await callback.answer("Помилка при видаленні резюме")
+            await safe_callback_answer(callback, "Помилка при видаленні резюме")
     except Exception as e:
         user_info = get_user_info(callback)
         log_error(
@@ -261,7 +267,7 @@ async def handle_delete_resume(callback: CallbackQuery, state: FSMContext) -> No
             username=user_info["username"],
             exc_info=True,
         )
-        await callback.answer("Помилка при видаленні резюме")
+        await safe_callback_answer(callback, "Помилка при видаленні резюме")
 
 
 # Register edit resume handlers

@@ -1,3 +1,6 @@
+import logging
+
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from constants import (
@@ -7,6 +10,33 @@ from constants import (
     error_processing,
     msg_selected_template,
 )
+
+logger = logging.getLogger(__name__)
+
+
+async def safe_callback_answer(
+    callback: CallbackQuery, text: str | None = None, show_alert: bool = False
+) -> None:
+    """
+    Safely answer a callback query, handling expired or invalid queries.
+    
+    Args:
+        callback: The CallbackQuery to answer
+        text: Optional text to show
+        show_alert: Whether to show as alert
+    """
+    try:
+        await callback.answer(text=text, show_alert=show_alert)
+    except TelegramBadRequest as e:
+        # Query is too old, already answered, or invalid - just log and ignore
+        logger.debug(
+            "Callback query answer failed (likely expired): %s", str(e), exc_info=False
+        )
+    except Exception as e:
+        # Other unexpected errors - log but don't crash
+        logger.warning(
+            "Unexpected error answering callback query: %s", str(e), exc_info=True
+        )
 
 
 async def get_updated_keyboard(
@@ -48,14 +78,14 @@ async def toggle_selection(
     selected = set(data.get(field_name, []))
 
     if not callback.data.startswith(prefix):
-        await callback.answer(error_processing, show_alert=True)
+        await safe_callback_answer(callback, error_processing, show_alert=True)
         return
 
     item_id = callback.data[len(prefix) :]
 
     if item_id == "submit":
         if not selected:
-            await callback.answer(error_no_selection, show_alert=True)
+            await safe_callback_answer(callback, error_no_selection, show_alert=True)
             return
 
         await callback.message.edit_reply_markup()
@@ -73,7 +103,7 @@ async def toggle_selection(
         if 0 <= idx < len(options):
             item = options[idx]
         else:
-            await callback.answer(error_invalid_index, show_alert=True)
+            await safe_callback_answer(callback, error_invalid_index, show_alert=True)
             return
     except ValueError:
         item = item_id
@@ -90,4 +120,4 @@ async def toggle_selection(
     )
 
     await callback.message.edit_reply_markup(reply_markup=keyboard)
-    await callback.answer()
+    await safe_callback_answer(callback)

@@ -9,7 +9,6 @@ CREDENTIALS_PATH = PROJECT_ROOT / "driverworkbot-firebase-adminsdk-fbsvc-ee0dfba
 
 DATABASE_URL = os.getenv(
     "FIREBASE_DATABASE_URL",
-    "https://botjobfincar-default-rtdb.europe-west1.firebasedatabase.app/"
 )
 
 logger = logging.getLogger(__name__)

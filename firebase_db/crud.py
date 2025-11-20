@@ -3,9 +3,56 @@ from google.cloud.firestore import Client
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 
 logger = logging.getLogger(__name__)
+
+# Firestore supports 64-bit signed integers: -2^63 to 2^63-1
+# Maximum value: 9,223,372,036,854,775,807
+# Minimum value: -9,223,372,036,854,775,808
+FIRESTORE_MAX_INT = 9223372036854775807
+FIRESTORE_MIN_INT = -9223372036854775808
+
+
+def validate_and_normalize_numbers(data: Any) -> Any:
+    """
+    Recursively validate and normalize numeric values for Firestore compatibility.
+    
+    Firestore supports 64-bit signed integers. Numbers outside this range are converted to strings.
+    
+    Args:
+        data: Data structure (dict, list, or primitive value) to validate
+        
+    Returns:
+        Normalized data structure with numbers validated/converted
+    """
+    if isinstance(data, dict):
+        return {key: validate_and_normalize_numbers(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [validate_and_normalize_numbers(item) for item in data]
+    elif isinstance(data, (int, float)):
+        # Convert float to int if it's a whole number
+        if isinstance(data, float) and data.is_integer():
+            data = int(data)
+        
+        # Check if number is within Firestore's integer range
+        if isinstance(data, int):
+            if data > FIRESTORE_MAX_INT or data < FIRESTORE_MIN_INT:
+                logger.warning(
+                    f"Number {data} is out of Firestore integer range. Converting to string."
+                )
+                return str(data)
+            return data
+        elif isinstance(data, float):
+            # For floats, check if they're reasonable (Firestore supports doubles)
+            # But to be safe, convert very large floats to strings
+            if abs(data) > 1e15:  # Very large numbers
+                logger.warning(
+                    f"Float {data} is very large. Converting to string."
+                )
+                return str(data)
+            return data
+    return data
 
 
 def get_firestore_client() -> Client:
@@ -97,9 +144,17 @@ def add_resume_sync(resume: dict) -> Optional[str]:
                 )
                 return None
         
-        # Final validation - ensure user_id is a valid positive integer
+        # Final validation - ensure user_id is a valid positive integer within Firestore range
         if not isinstance(user_id, int) or user_id <= 0:
             logger.error(f"Invalid user_id value: {user_id} (must be positive integer)")
+            return None
+        
+        # Validate user_id is within Firestore's integer range (64-bit signed)
+        if user_id > FIRESTORE_MAX_INT:
+            logger.error(
+                f"user_id {user_id} exceeds Firestore maximum integer value {FIRESTORE_MAX_INT}. "
+                f"Cannot save resume."
+            )
             return None
         
         # Ensure username is None if not provided (not empty string)
@@ -113,6 +168,9 @@ def add_resume_sync(resume: dict) -> Optional[str]:
         
         # Create a copy of resume data without user_id and username to avoid overwriting
         resume_clean = {k: v for k, v in resume.items() if k not in ("user_id", "username")}
+        
+        # Validate and normalize all numeric values in resume data
+        resume_clean = validate_and_normalize_numbers(resume_clean)
         
         resume_with_timestamp = {
             **resume_clean,
@@ -303,9 +361,12 @@ def update_resume_sync(user_id: int, updates: dict) -> bool:
             logger.warning(f"Resume not found for update - user_id: {user_id}")
             return False
         
+        # Validate and normalize all numeric values in updates
+        updates_normalized = validate_and_normalize_numbers(updates)
+        
         # Prepare updates with timestamp
         update_data = {
-            **updates,
+            **updates_normalized,
             "updated_at": firestore.SERVER_TIMESTAMP,
         }
         

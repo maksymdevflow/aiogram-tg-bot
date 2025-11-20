@@ -277,10 +277,6 @@ aiogram-tg-bot/
 
 ---
 
-## 🤝 Contributing
-
-This project follows strict architectural guidelines. Please refer to `ARCHITECTURE.md` for detailed development rules and patterns.
-
 ### Key Rules
 - All user-facing text must be in `constants.py`
 - Handlers must be registered in `bot.py`

@@ -3,6 +3,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
 )
 from constants import (
     DRIVING_CATEGORIES,
@@ -19,6 +20,9 @@ phone_keyboard = ReplyKeyboardMarkup(
     resize_keyboard=True,
     one_time_keyboard=True,
 )
+
+# Keyboard remove object to hide the phone keyboard after contact is sent
+remove_keyboard = ReplyKeyboardRemove()
 
 keyboard_place_of_living = InlineKeyboardMarkup(
     inline_keyboard=[

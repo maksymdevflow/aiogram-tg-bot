@@ -105,8 +105,8 @@ from constants import (
     resume_display_type_of_work,
     resume_display_types_of_cars,
 )
-from functions import get_updated_keyboard, toggle_selection
-from keyboards import get_main_menu_keyboard, keyboard_place_of_living, phone_keyboard
+from functions import get_updated_keyboard, safe_callback_answer, toggle_selection
+from keyboards import get_main_menu_keyboard, keyboard_place_of_living, phone_keyboard, remove_keyboard
 from logging_config import (
     get_user_info,
     log_error,
@@ -182,7 +182,7 @@ async def process_name(message: Message, state: FSMContext) -> None:
             await message.answer(error_name_too_long)
             return
 
-        if not all(char.isalpha() or char.isspace() or char == "-" for char in name):
+        if not all(char.isalpha() or char.isspace() or char == "-" or char == "'" for char in name):
             sanitized_name = sanitize_name(name)
             log_warning(
                 logger,
@@ -275,7 +275,7 @@ async def process_phone(message: Message, state: FSMContext) -> None:
         )
         await state.set_state(ResumeForm.age)
         logger.info("Asking for age - user_id: %s", user_info["user_id"])
-        await message.answer(ask_age)
+        await message.answer(ask_age, reply_markup=remove_keyboard)
     except Exception as e:
         user_info = get_user_info(message)
         logger.error(
@@ -525,24 +525,18 @@ async def process_driving_exp_by_category(message: Message, state: FSMContext) -
         )
         await message.answer(ask_driving_exp_template.format(category=next_cat), parse_mode="HTML")
     else:
-        selected_set = set(selected_categories)
-        needs_additional_survey = any(
-            cat in selected_set for cat in DRIVING_CATEGORIES_ADDITIONAL_INFO
+        # Always go to type_of_work first, semi-trailer types will be asked after types_of_cars
+        await state.set_state(ResumeForm.type_of_work)
+        logger.info(
+            "All driving categories processed, moving to type_of_work - user_id: %s",
+            user_info["user_id"],
         )
 
-        if needs_additional_survey:
-            keyboard = await get_updated_keyboard(
-                selected=set(), categories=SEMI_TRAILERS_TYPES, prefix="semi_trailer_"
-            )
-            logger.info("Asking for semi-trailer types - user_id: %s", user_info["user_id"])
-            await message.answer(ask_semi_trailer_types, parse_mode="HTML", reply_markup=keyboard)
-            await state.set_state(ResumeForm.driving_semi_trailer_types)
-        else:
-            await state.set_state(ResumeForm.type_of_work)
-            logger.info(
-                "All driving categories processed, moving to type_of_work - user_id: %s",
-                user_info["user_id"],
-            )
+        keyboard = await get_updated_keyboard(
+            selected=set(), categories=TYPES_OF_WORK, prefix="type_of_work_"
+        )
+        logger.info("Asking for type of work - user_id: %s", user_info["user_id"])
+        await message.answer(ask_type_of_work, parse_mode="HTML", reply_markup=keyboard)
 
 
 async def process_driving_semi_trailer_types(callback: CallbackQuery, state: FSMContext) -> None:
@@ -556,7 +550,7 @@ async def process_driving_semi_trailer_types(callback: CallbackQuery, state: FSM
         if not selected_types:
             user_info = get_user_info(callback)
             logger.warning("No semi-trailer types selected - user_id: %s", user_info["user_id"])
-            await callback.answer(error_no_semi_trailer, show_alert=True)
+            await safe_callback_answer(callback, error_no_semi_trailer, show_alert=True)
             return
 
         user_info = get_user_info(callback)
@@ -568,20 +562,26 @@ async def process_driving_semi_trailer_types(callback: CallbackQuery, state: FSM
             len(selected_types),
         )
 
-        await state.set_state(ResumeForm.type_of_work)
+        await state.set_state(ResumeForm.is_adr_license)
         logger.info(
-            "Semi-trailer types survey completed, moving to type_of_work - user_id: %s",
+            "Semi-trailer types survey completed, moving to is_adr_license - user_id: %s",
             user_info["user_id"],
         )
 
         await callback.message.edit_reply_markup()
         await callback.message.answer(msg_all_data_collected)
 
-        keyboard = await get_updated_keyboard(
-            selected=set(), categories=TYPES_OF_WORK, prefix="type_of_work_"
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=button_adr_yes, callback_data="adr_yes")],
+                [InlineKeyboardButton(text=button_adr_no, callback_data="adr_no")],
+            ]
         )
-        logger.info("Asking for type of work - user_id: %s", user_info["user_id"])
-        await callback.message.answer(ask_type_of_work, parse_mode="HTML", reply_markup=keyboard)
+
+        logger.info("Asking for ADR license - user_id: %s", user_info["user_id"])
+        await callback.message.answer(ask_is_adr_license, reply_markup=keyboard)
     else:
         await toggle_selection(
             callback=callback,
@@ -661,30 +661,18 @@ async def process_driving_exp_per_category(message: Message, state: FSMContext) 
         )
         await message.answer(ask_driving_exp_template.format(category=next_cat), parse_mode="HTML")
     else:
-        selected_set = set(selected_categories)
-        needs_additional_survey = any(
-            cat in selected_set for cat in DRIVING_CATEGORIES_ADDITIONAL_INFO
+        # Always go to type_of_work first, semi-trailer types will be asked after types_of_cars
+        await state.set_state(ResumeForm.type_of_work)
+        logger.info(
+            "All driving categories processed, moving to type_of_work - user_id: %s",
+            user_info["user_id"],
         )
 
-        if needs_additional_survey:
-            keyboard = await get_updated_keyboard(
-                selected=set(), categories=SEMI_TRAILERS_TYPES, prefix="semi_trailer_"
-            )
-            logger.info("Asking for semi-trailer types - user_id: %s", user_info["user_id"])
-            await message.answer(ask_semi_trailer_types, parse_mode="HTML", reply_markup=keyboard)
-            await state.set_state(ResumeForm.driving_semi_trailer_types)
-        else:
-            await state.set_state(ResumeForm.type_of_work)
-            logger.info(
-                "All driving categories processed, moving to type_of_work - user_id: %s",
-                user_info["user_id"],
-            )
-
-            keyboard = await get_updated_keyboard(
-                selected=set(), categories=TYPES_OF_WORK, prefix="type_of_work_"
-            )
-            logger.info("Asking for type of work - user_id: %s", user_info["user_id"])
-            await message.answer(ask_type_of_work, parse_mode="HTML", reply_markup=keyboard)
+        keyboard = await get_updated_keyboard(
+            selected=set(), categories=TYPES_OF_WORK, prefix="type_of_work_"
+        )
+        logger.info("Asking for type of work - user_id: %s", user_info["user_id"])
+        await message.answer(ask_type_of_work, parse_mode="HTML", reply_markup=keyboard)
 
 
 async def toggle_type_of_work(callback: CallbackQuery, state: FSMContext) -> None:
@@ -759,7 +747,7 @@ async def process_types_of_cars(message: Message, state: FSMContext) -> None:
         await message.answer(error_types_of_cars_cyrillic_template, parse_mode="HTML")
         return
 
-    allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ,-.")
+    allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ,-.'")
     if not all(char in allowed_chars for char in text):
         sanitized_text = sanitize_text(text)
         logger.warning(
@@ -802,19 +790,35 @@ async def process_types_of_cars(message: Message, state: FSMContext) -> None:
         sanitized_text,
     )
 
-    await state.set_state(ResumeForm.is_adr_license)
-    logger.info("Car types collected, moving to is_adr_license - user_id: %s", user_info["user_id"])
-
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text=button_adr_yes, callback_data="adr_yes")],
-            [InlineKeyboardButton(text=button_adr_no, callback_data="adr_no")],
-        ]
+    # Check if user needs to answer about semi-trailer types
+    data = await state.get_data()
+    selected_categories = data.get("selected_driver_categories", [])
+    selected_set = set(selected_categories)
+    needs_additional_survey = any(
+        cat in selected_set for cat in DRIVING_CATEGORIES_ADDITIONAL_INFO
     )
 
-    await message.answer(ask_is_adr_license, reply_markup=keyboard)
+    if needs_additional_survey:
+        keyboard = await get_updated_keyboard(
+            selected=set(), categories=SEMI_TRAILERS_TYPES, prefix="semi_trailer_"
+        )
+        logger.info("Asking for semi-trailer types - user_id: %s", user_info["user_id"])
+        await message.answer(ask_semi_trailer_types, parse_mode="HTML", reply_markup=keyboard)
+        await state.set_state(ResumeForm.driving_semi_trailer_types)
+    else:
+        await state.set_state(ResumeForm.is_adr_license)
+        logger.info("Car types collected, moving to is_adr_license - user_id: %s", user_info["user_id"])
+
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=button_adr_yes, callback_data="adr_yes")],
+                [InlineKeyboardButton(text=button_adr_no, callback_data="adr_no")],
+            ]
+        )
+
+        await message.answer(ask_is_adr_license, reply_markup=keyboard)
 
 
 async def process_adr_license(callback: CallbackQuery, state: FSMContext) -> None:
@@ -831,7 +835,7 @@ async def process_adr_license(callback: CallbackQuery, state: FSMContext) -> Non
         logger.warning(
             "Invalid ADR callback data - user_id: %s, data: %s", user_info["user_id"], callback.data
         )
-        await callback.answer(error_processing, show_alert=True)
+        await safe_callback_answer(callback, error_processing, show_alert=True)
         return
 
     await state.update_data(is_adr_license=has_adr)
@@ -929,18 +933,7 @@ async def process_desired_salary(message: Message, state: FSMContext) -> None:
             await message.answer(error_salary_invalid_format, parse_mode="HTML")
             return
 
-        if salary < 1000:
-            logger.warning("Salary too low - user_id: %s, salary: %s", user_info["user_id"], salary)
-            await message.answer(error_salary_too_low, parse_mode="HTML")
-            return
-
-        if salary > 1000000:
-            logger.warning(
-                "Salary too high - user_id: %s, salary: %s", user_info["user_id"], salary
-            )
-            await message.answer(error_salary_too_high, parse_mode="HTML")
-            return
-
+        # No validation on salary amount - any value is allowed
         await state.update_data(desired_salary=salary)
         logger.info(
             "Collected desired salary - user_id: %s, username: %s, salary: %s",
@@ -985,7 +978,7 @@ async def toggle_docs_for_driving_abroad(callback: CallbackQuery, state: FSMCont
             logger.warning(
                 "Invalid callback data - user_id: %s, data: %s", user_info["user_id"], callback.data
             )
-            await callback.answer(error_processing, show_alert=True)
+            await safe_callback_answer(callback, error_processing, show_alert=True)
             return
 
         item_id = callback.data[len(prefix) :]
@@ -997,24 +990,28 @@ async def toggle_docs_for_driving_abroad(callback: CallbackQuery, state: FSMCont
             else:
                 user_info = get_user_info(callback)
                 logger.warning("Invalid index - user_id: %s, index: %s", user_info["user_id"], idx)
-                await callback.answer(error_invalid_index, show_alert=True)
+                await safe_callback_answer(callback, error_invalid_index, show_alert=True)
                 return
         except ValueError:
             user_info = get_user_info(callback)
             logger.warning(
                 "Invalid callback data - user_id: %s, data: %s", user_info["user_id"], callback.data
             )
-            await callback.answer(error_processing, show_alert=True)
+            await safe_callback_answer(callback, error_processing, show_alert=True)
             return
 
-        no_docs_option = "❌ Не маю"
+        # "Не маю" is the last option in DOCS_FOR_DRIVING_ABROAD
+        no_docs_option = DOCS_FOR_DRIVING_ABROAD[-1]  # "Не маю"
 
         if item == no_docs_option:
+            # When "Не маю" is selected, clear all other selections
             selected = {no_docs_option}
         else:
+            # If user selects any other option, remove "Не маю" if it was selected
             if no_docs_option in selected:
                 selected.remove(no_docs_option)
 
+            # Toggle the selected item
             if item in selected:
                 selected.remove(item)
             else:
@@ -1026,7 +1023,7 @@ async def toggle_docs_for_driving_abroad(callback: CallbackQuery, state: FSMCont
             selected=selected, categories=DOCS_FOR_DRIVING_ABROAD, prefix=prefix
         )
         await callback.message.edit_reply_markup(reply_markup=keyboard)
-        await callback.answer()
+        await safe_callback_answer(callback)
     else:
         updated_data = await state.get_data()
         selected = list(updated_data.get("selected_docs_abroad", []))
@@ -1036,7 +1033,7 @@ async def toggle_docs_for_driving_abroad(callback: CallbackQuery, state: FSMCont
             logger.warning(
                 "No docs for driving abroad selected - user_id: %s", user_info["user_id"]
             )
-            await callback.answer(error_no_selection, show_alert=True)
+            await safe_callback_answer(callback, error_no_selection, show_alert=True)
             return
 
         user_info = get_user_info(callback)
@@ -1088,7 +1085,7 @@ async def process_military_booking(callback: CallbackQuery, state: FSMContext) -
                 user_info["user_id"],
                 callback.data,
             )
-            await callback.answer(error_processing, show_alert=True)
+            await safe_callback_answer(callback, error_processing, show_alert=True)
             return
 
         await state.update_data(military_booking=has_military_booking)
@@ -1175,7 +1172,7 @@ async def skip_description(callback: CallbackQuery, state: FSMContext) -> None:
         # Validate user_id
         if user_info["user_id"] is None:
             logger.error("Cannot skip description: user_id is None")
-            await callback.answer("Помилка: не вдалося ідентифікувати користувача.", show_alert=True)
+            await safe_callback_answer(callback, "Помилка: не вдалося ідентифікувати користувача.", show_alert=True)
             return
 
         await state.update_data(description="")
@@ -1435,6 +1432,15 @@ def prepare_resume_data_for_firebase(data: dict, user_id: int | None, username: 
             user_id = int(user_id)
         except (ValueError, TypeError):
             raise ValueError(f"user_id must be an integer, got: {type(user_id)}")
+    
+    # Validate user_id is within Firestore's integer range (64-bit signed)
+    # Max: 9,223,372,036,854,775,807, Min: -9,223,372,036,854,775,808
+    FIRESTORE_MAX_INT = 9223372036854775807
+    if user_id > FIRESTORE_MAX_INT or user_id < -9223372036854775808:
+        raise ValueError(
+            f"user_id {user_id} is out of Firestore integer range. "
+            f"Must be between -9,223,372,036,854,775,808 and 9,223,372,036,854,775,807"
+        )
 
     # username can be None, but if it exists, ensure it's a string
     if username is not None and not isinstance(username, str):
@@ -1443,19 +1449,69 @@ def prepare_resume_data_for_firebase(data: dict, user_id: int | None, username: 
     region_key = data.get("place_of_living_region")
     region_name = REGIONS.get(region_key, region_key) if region_key else None
 
+    # Validate and normalize numeric fields
+    age = data.get("age")
+    if age is not None:
+        try:
+            age = int(age) if isinstance(age, (int, float, str)) else None
+            # Age should be reasonable (0-150)
+            if age is not None and (age < 0 or age > 150):
+                logger.warning(f"Invalid age value: {age}, setting to None")
+                age = None
+        except (ValueError, TypeError):
+            logger.warning(f"Could not convert age to int: {age}, setting to None")
+            age = None
+    
+    desired_salary = data.get("desired_salary")
+    if desired_salary is not None:
+        try:
+            # Convert to int if it's a string or float
+            if isinstance(desired_salary, str):
+                # Remove spaces, commas, dots
+                salary_clean = desired_salary.replace(" ", "").replace(",", "").replace(".", "")
+                desired_salary = int(salary_clean) if salary_clean else None
+            elif isinstance(desired_salary, float):
+                desired_salary = int(desired_salary)
+            elif not isinstance(desired_salary, int):
+                desired_salary = None
+        except (ValueError, TypeError):
+            logger.warning(f"Could not convert desired_salary to int: {desired_salary}, setting to None")
+            desired_salary = None
+    
+    # Validate driving_experience values
+    driving_experience = data.get("driving_experience", {})
+    if isinstance(driving_experience, dict):
+        validated_experience = {}
+        for category, years in driving_experience.items():
+            try:
+                if isinstance(years, (int, float)):
+                    # Convert float to int if whole number, otherwise keep as float
+                    if isinstance(years, float) and years.is_integer():
+                        years = int(years)
+                    # Validate years are reasonable (0-100)
+                    if isinstance(years, (int, float)) and 0 <= years <= 100:
+                        validated_experience[category] = years
+                    else:
+                        logger.warning(f"Invalid experience years for {category}: {years}, skipping")
+                else:
+                    logger.warning(f"Invalid experience type for {category}: {type(years)}, skipping")
+            except (ValueError, TypeError):
+                logger.warning(f"Could not validate experience for {category}: {years}, skipping")
+        driving_experience = validated_experience
+    
     firebase_data = {
         "user_id": user_id,  # Always int, never None
         "username": username,  # str or None
         "name": data.get("name"),
         "phone": data.get("phone"),
-        "age": data.get("age"),
+        "age": age,  # Validated int or None
         "place_of_living": {
             "region_key": region_key,
             "region_name": region_name,
             "city": data.get("place_of_living_city"),
         },
         "driving_categories": data.get("selected_driver_categories", []),
-        "driving_experience": data.get("driving_experience", {}),
+        "driving_experience": driving_experience,  # Validated dict
         "semi_trailer_types": data.get("semi_trailer_types", []),
         "types_of_work": data.get("types_of_work", []),
         "types_of_cars": _convert_car_types_to_list(data.get("types_of_cars")),
@@ -1463,7 +1519,7 @@ def prepare_resume_data_for_firebase(data: dict, user_id: int | None, username: 
         "is_adr_license": data.get("is_adr_license", False),
         "docs_for_driving_abroad": data.get("docs_for_driving_abroad", []),
         "military_booking": data.get("military_booking", False),
-        "desired_salary": data.get("desired_salary"),
+        "desired_salary": desired_salary,  # Validated int or None
         "description": data.get("description", ""),
     }
 
@@ -1571,14 +1627,12 @@ async def finalize_resume(
         resume_display = format_resume_display(data)
         await message.answer(resume_display, parse_mode="HTML")
 
-        await message.answer(msg_resume_saved)
-
         await state.clear()
         logger.info("State cleared - user_id: %s", user_info["user_id"])
 
         # Use dynamic keyboard - resume was just created, so show "My Resume" button
         keyboard = get_main_menu_keyboard(has_resume=True)
-        await message.answer(msg_bot_greeting, reply_markup=keyboard)
+        await message.answer(msg_resume_saved, reply_markup=keyboard)
     except Exception as e:
         user_info = get_user_info(message)
         logger.error(

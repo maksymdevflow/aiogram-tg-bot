@@ -92,7 +92,7 @@ from constants import (
     msg_selected_template,
 )
 from functions import get_updated_keyboard
-from keyboards import delete_resume_keyboard, keyboard_place_of_living, phone_keyboard
+from keyboards import delete_resume_keyboard, keyboard_place_of_living, phone_keyboard, remove_keyboard
 from logging_config import (
     get_user_info,
     log_error,
@@ -188,7 +188,7 @@ async def handle_edit_resume_menu(callback: CallbackQuery, state: FSMContext) ->
             username=user_info["username"],
             exc_info=True,
         )
-        await callback.answer(error_edit_menu_failed)
+        await safe_callback_answer(callback, error_edit_menu_failed)
 
 
 async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
@@ -198,13 +198,13 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
         field = callback.data.replace("edit_field_", "")
 
         if not user_info["user_id"]:
-            await callback.answer(error_user_not_found)
+            await safe_callback_answer(callback, error_user_not_found)
             return
 
         # Get current resume data
         resume_data = await get_resume(user_info["user_id"])
         if not resume_data:
-            await callback.answer(error_resume_not_found)
+            await safe_callback_answer(callback, error_resume_not_found)
             return
 
         # Convert to display format for easier handling
@@ -230,24 +230,24 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
         if field == "name":
             await callback.message.edit_text(ask_name)
             await state.set_state(ResumeForm.name)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "phone":
             await callback.message.edit_text(ask_phone, reply_markup=phone_keyboard)
             await state.set_state(ResumeForm.phone)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "age":
             await callback.message.edit_text(ask_age)
             await state.set_state(ResumeForm.age)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "location":
             await callback.message.edit_text(
                 ask_place_of_living_region, reply_markup=keyboard_place_of_living
             )
             await state.set_state(ResumeForm.place_of_living_region)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "driving_categories":
             # Load current categories - ensure it's a list
@@ -266,7 +266,7 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
             await state.set_state(ResumeForm.driving_categories)
             # Store current categories in state but don't show them as selected
             await state.update_data(selected_driver_categories=current_categories)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "type_of_work":
             # Ensure it's a list
@@ -285,14 +285,14 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
             await state.set_state(ResumeForm.type_of_work)
             # Store current types in state but don't show them as selected
             await state.update_data(types_of_work=current_types)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "types_of_cars":
             current_cars = display_data.get("types_of_cars", "")
             await callback.message.edit_text(ask_types_of_cars, parse_mode="HTML")
             await state.set_state(ResumeForm.types_of_cars)
             await state.update_data(types_of_cars=current_cars)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "adr":
             current_adr = display_data.get("is_adr_license", False)
@@ -307,7 +307,7 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
             await state.set_state(ResumeForm.is_adr_license)
             # Store current value in state but don't show it as selected
             await state.update_data(is_adr_license=current_adr)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "race_duration":
             # Ensure it's a list
@@ -326,14 +326,14 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
             await state.set_state(ResumeForm.race_duration_preference)
             # Store current durations in state but don't show them as selected
             await state.update_data(race_duration_preference=current_durations)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "salary":
             current_salary = display_data.get("desired_salary", "")
             await callback.message.edit_text(ask_desired_salary)
             await state.set_state(ResumeForm.desired_salary)
             await state.update_data(desired_salary=current_salary)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "docs_abroad":
             # Ensure it's a list
@@ -352,7 +352,7 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
             await state.set_state(ResumeForm.docs_for_driving_abroad)
             # Store current docs in state but don't show them as selected
             await state.update_data(docs_for_driving_abroad=current_docs)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "military":
             current_military = display_data.get("military_booking", False)
@@ -367,7 +367,7 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
             await state.set_state(ResumeForm.military_booking)
             # Store current value in state but don't show it as selected
             await state.update_data(military_booking=current_military)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
         elif field == "description":
             current_desc = display_data.get("description", "")
@@ -383,7 +383,7 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
             await callback.message.edit_text(ask_description, reply_markup=keyboard)
             await state.set_state(ResumeForm.description)
             await state.update_data(description=current_desc)
-            await callback.answer()
+            await safe_callback_answer(callback)
 
     except Exception as e:
         user_info = get_user_info(callback)
@@ -395,7 +395,7 @@ async def handle_edit_field(callback: CallbackQuery, state: FSMContext) -> None:
             username=user_info["username"],
             exc_info=True,
         )
-        await callback.answer(error_edit_field_failed)
+        await safe_callback_answer(callback, error_edit_field_failed)
 
 
 async def save_edited_field(message: Message, state: FSMContext) -> None:
@@ -500,7 +500,9 @@ async def save_edited_field(message: Message, state: FSMContext) -> None:
         success = await update_resume(user_info["user_id"], field_updates)
 
         if success:
-            await message.answer(msg_resume_updated)
+            # Remove keyboard if phone was sent via contact button
+            reply_markup = remove_keyboard if (editing_field == "phone" and data.get("remove_phone_keyboard")) else None
+            await message.answer(msg_resume_updated, reply_markup=reply_markup)
 
             # Show updated resume
             updated_resume = await get_resume(user_info["user_id"])
@@ -577,7 +579,7 @@ async def process_name_wrapper(message: Message, state: FSMContext) -> None:
             await message.answer(error_name_too_long)
             return
 
-        if not all(char.isalpha() or char.isspace() or char == "-" for char in name):
+        if not all(char.isalpha() or char.isspace() or char == "-" or char == "'" for char in name):
             sanitized_name = sanitize_name(name)
             log_warning(
                 logger,
@@ -652,6 +654,9 @@ async def process_phone_wrapper(message: Message, state: FSMContext) -> None:
             user_id=user_info["user_id"],
             phone=sanitized_phone,
         )
+        # Store flag to remove keyboard when saving
+        if message.contact:
+            await state.update_data(remove_phone_keyboard=True)
         await save_edited_field(message, state)
     else:
         await process_phone(message, state)
@@ -874,7 +879,7 @@ async def process_types_of_cars_wrapper(message: Message, state: FSMContext) -> 
             await message.answer(error_types_of_cars_cyrillic_template, parse_mode="HTML")
             return
 
-        allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ,-.")
+        allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ,-.'")
         if not all(char in allowed_chars for char in text):
             from logging_config import log_warning, sanitize_text
 
@@ -1005,36 +1010,7 @@ async def process_desired_salary_wrapper(message: Message, state: FSMContext) ->
             await message.answer(error_salary_invalid_format, parse_mode="HTML")
             return
 
-        if salary < 1000:
-            from logging_config import log_warning
-
-            log_warning(
-                logger,
-                action="salary_validation_failed",
-                reason="too_low",
-                user_id=user_info["user_id"],
-                salary=salary,
-            )
-            from constants import error_salary_too_low
-
-            await message.answer(error_salary_too_low, parse_mode="HTML")
-            return
-
-        if salary > 1000000:
-            from logging_config import log_warning
-
-            log_warning(
-                logger,
-                action="salary_validation_failed",
-                reason="too_high",
-                user_id=user_info["user_id"],
-                salary=salary,
-            )
-            from constants import error_salary_too_high
-
-            await message.answer(error_salary_too_high, parse_mode="HTML")
-            return
-
+        # No validation on salary amount - any value is allowed
         # Validation passed, save
         from logging_config import log_info
 
@@ -1121,7 +1097,7 @@ async def process_adr_license_wrapper(callback: CallbackQuery, state: FSMContext
                 user_info["user_id"],
                 callback.data,
             )
-            await callback.answer(error_processing, show_alert=True)
+            await safe_callback_answer(callback, error_processing, show_alert=True)
             return
         
         await state.update_data(is_adr_license=has_adr)
@@ -1168,7 +1144,7 @@ async def process_military_booking_wrapper(callback: CallbackQuery, state: FSMCo
                 callback_data=callback.data,
             )
             from constants import error_processing
-            await callback.answer(error_processing, show_alert=True)
+            await safe_callback_answer(callback, error_processing, show_alert=True)
             return
         
         await state.update_data(military_booking=has_military_booking)
@@ -1279,7 +1255,7 @@ async def toggle_type_of_work_wrapper(callback: CallbackQuery, state: FSMContext
             if not selected:
                 user_info = get_user_info(callback)
                 from constants import error_no_selection
-                await callback.answer(error_no_selection, show_alert=True)
+                await safe_callback_answer(callback, error_no_selection, show_alert=True)
                 return
             
             # Get user info from state (stored during edit start)
@@ -1339,7 +1315,7 @@ async def toggle_race_duration_wrapper(callback: CallbackQuery, state: FSMContex
             if not selected:
                 user_info = get_user_info(callback)
                 from constants import error_no_selection
-                await callback.answer(error_no_selection, show_alert=True)
+                await safe_callback_answer(callback, error_no_selection, show_alert=True)
                 return
             
             # Get user info from state (stored during edit start)
@@ -1409,7 +1385,7 @@ async def toggle_docs_for_driving_abroad_wrapper(
                     callback_data=callback.data,
                 )
                 from constants import error_processing
-                await callback.answer(error_processing, show_alert=True)
+                await safe_callback_answer(callback, error_processing, show_alert=True)
                 return
             
             item_id = callback.data[len(prefix) :]
@@ -1428,7 +1404,7 @@ async def toggle_docs_for_driving_abroad_wrapper(
                         index=idx,
                     )
                     from constants import error_invalid_index
-                    await callback.answer(error_invalid_index, show_alert=True)
+                    await safe_callback_answer(callback, error_invalid_index, show_alert=True)
                     return
             except ValueError:
                 user_info = get_user_info(callback)
@@ -1440,17 +1416,21 @@ async def toggle_docs_for_driving_abroad_wrapper(
                     callback_data=callback.data,
                 )
                 from constants import error_processing
-                await callback.answer(error_processing, show_alert=True)
+                await safe_callback_answer(callback, error_processing, show_alert=True)
                 return
             
-            no_docs_option = "❌ Не маю"
+            # "Не маю" is the last option in DOCS_FOR_DRIVING_ABROAD
+            no_docs_option = DOCS_FOR_DRIVING_ABROAD[-1]  # "Не маю"
             
             if item == no_docs_option:
+                # When "Не маю" is selected, clear all other selections
                 selected = {no_docs_option}
             else:
+                # If user selects any other option, remove "Не маю" if it was selected
                 if no_docs_option in selected:
                     selected.remove(no_docs_option)
                 
+                # Toggle the selected item
                 if item in selected:
                     selected.remove(item)
                 else:
@@ -1462,7 +1442,7 @@ async def toggle_docs_for_driving_abroad_wrapper(
                 selected=selected, categories=DOCS_FOR_DRIVING_ABROAD, prefix=prefix
             )
             await callback.message.edit_reply_markup(reply_markup=keyboard)
-            await callback.answer()
+            await safe_callback_answer(callback)
         else:
             # Handle submit
             current_data = await state.get_data()
@@ -1477,7 +1457,7 @@ async def toggle_docs_for_driving_abroad_wrapper(
                     user_id=user_info["user_id"],
                 )
                 from constants import error_no_selection
-                await callback.answer(error_no_selection, show_alert=True)
+                await safe_callback_answer(callback, error_no_selection, show_alert=True)
                 return
             
             # Get user info from state (stored during edit start)
@@ -1695,7 +1675,7 @@ async def process_driving_semi_trailer_types_wrapper(
                 )
                 from constants import error_no_semi_trailer
 
-                await callback.answer(error_no_semi_trailer, show_alert=True)
+                await safe_callback_answer(callback, error_no_semi_trailer, show_alert=True)
                 return
 
             user_info = get_user_info(callback)
